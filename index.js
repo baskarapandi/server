@@ -9,6 +9,7 @@ const User = require('./user');
 const Seller = require('./seller');
 const SellerData = require('./SellerData');
 const Inventory = require('./Inventory');
+const salesReport = require('./salesReport');
 const app = express();
 app.use(express.json())
 app.use(cors());
@@ -259,6 +260,142 @@ app.post("/api/ProductDetails", async (req, res,next) => {
     res.status(500).json({ error: 'An error occurred' });
   }
 })
+//sellers data
+app.post("/api/SellersData", async (req, res,next) => {
+  try{
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    var decoded = jwt.decode(token,{complete: true});
+    const Email = decoded.payload;
+    const value = req.body.val;
+    const sellerData = await SellerData.findOne({UserId: Email}).exec();
+    const array = sellerData.products;
+    res.json({array});
+  }
+  catch(error){
+    res.status(500).json({error:"internal error"})
+  }
+})
+app.post("/api/SellersDataUpdate", async (req, res,next) => {
+  try{
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    var decoded = jwt.decode(token,{complete: true});
+    const Email = decoded.payload;
+    const products = req.body.Products;
+    console.log(products)
+    const sellerData = await SellerData.findOne({UserId: Email}).exec();
+    const newUser={
+      ...sellerData.toObject(),
+      products : products
+    }
+    console.log("newuser"+newUser)
+    const updatedUser = await SellerData.findOneAndUpdate({UserId :Email },{$set:{...newUser}},{ new: true });
+    console.log(updatedUser)
+    if(updatedUser!=null){
+      res.end("ok")
+    }  
+  }
+  catch(error){
+    res.status(500).json({error:"internal error"})
+  }
+})
+//api get one sellected product for edit product page for the seller
+
+app.post("/api/getProduct", async (req, res,next) => {
+  try{
+    console.log("getproduct")
+    const id = req.body.productId;
+    console.log(id)
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    var decoded = jwt.decode(token,{complete: true});
+    const Email = decoded.payload;
+    console.log(Email)
+     SellerData.findOne(
+      { UserId: Email, "products._id": id },
+      { "products.$": 1}
+    ).then((sellerData) => {
+      if (!sellerData) {
+        console.log('No document found with the specified criteria');
+      } else {
+        console.log(sellerData)
+        const array = sellerData.products;
+        console.log(array)
+        console.log(array[0])
+        res.json({products:array[0]});
+        console.log("return "+array[0]) 
+      }
+    })
+    .catch((error) => {
+      console.error('An error occurred:', error);
+    });
+    
+    
+  }
+  catch(error){
+    res.status(500).json({error:"internal error"})
+  }
+})
+//update the edited product
+app.post("/api/updateProduct", async (req, res,next) => {
+  try{
+    console.log("updateproduct")
+    const updatedProduct = req.body.newProduct;
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    var decoded = jwt.decode(token,{complete: true});
+    const Email = decoded.payload;
+    const sellerData = await SellerData.updateOne(
+      {
+        UserId: Email,
+        "products._id": updatedProduct._id
+      },
+      {
+        $set: {
+          "products.$": updatedProduct
+        }
+      }
+    ).exec();
+    
+    res.end("saved");
+    console.log(sellerData);
+    console.log("saved");
+  }
+  catch(error){
+    res.status(500).json({error:"internal error"})
+  }
+})
+//delete product
+
+app.post("/api/deleteProduct", async (req, res,next) => {
+  try{
+    console.log("deleteproduct")
+    const ProductId = req.body.productId;
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    var decoded = jwt.decode(token,{complete: true});
+    const Email = decoded.payload;
+    console.log("ProductId"+ProductId)
+    const sellerData = await SellerData.updateOne(
+      {
+        UserId: Email,
+      },
+      {
+        $pull: {
+          products:{_id:ProductId}
+        }
+      }
+    ).exec();
+    
+    res.end("saved");
+    console.log(sellerData);
+    console.log("saved");
+  }
+  catch(error){
+    res.status(500).json({error:"internal error"})
+  }
+})
 //inventorydata
 app.post("/api/InventoryData", async (req, res,next) => {
   try{
@@ -279,6 +416,88 @@ app.post("/api/InventoryData", async (req, res,next) => {
   }
 
 })
+app.post("/api/salesReport", async (req, res,next) => {
+  
+    console.log("api request");
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    var decoded = jwt.decode(token,{complete: true});
+    const Email = decoded.payload;
+    console.log("email"+Email)
+    const data =await salesReport.findOne({UserId:Email}).exec();
+    //console.log(data.Sales)
+    res.json({sales:data.Sales});
+  
+  
+})
+
+// api request for search
+app.post("/api/Search", async (req, res,next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  var decoded = jwt.decode(token,{complete: true});
+  const Email = decoded.payload;
+  const value = req.body.val;
+  const sellerData = await Inventory.findOne({UserId: Email}).exec();
+  const array = sellerData.products;
+  console.log("products"+array)
+  console.log(array);
+  const reply = [];
+  var index=0;
+  for(var i=0;i<array.length;i+=1){
+    const Name = array[i].name;
+    console.log(Name+"name")
+    const re = Name.toLowerCase().includes(value);
+    console.log(re)
+    if(re){
+      reply[index]=Name;
+      index+=1;
+    }
+    
+  }
+  console.log("[]"+reply);
+  res.json({key:reply});
+})
+app.post("/api/editStock", async (req, res,next) => {
+  const Name = req.body.name;
+  const Stock = req.body.stock;
+  console.log(Name);
+  console.log(Stock);
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  var decoded = jwt.decode(token,{complete: true});
+  const Email = decoded.payload;
+  console.log(Email);
+  console.log("inventory token " + token);
+  const user =await Inventory.findOne({UserId:Email}).exec();
+  //console.log("user"+user);
+  const products = user.products;
+  console.log("product    "+products)
+  const newProduct = products.map((prod)=>{
+    console.log("name inside "+Name)
+    console.log("name inside "+Stock)
+    if(prod.name==Name){
+      const array =prod.product.sales;
+      const n = prod.name;
+      console.log("array"+ array)
+      return ({
+        name:Name,
+        product : {sales:array,stock:Stock}});
+    }
+    else return prod;
+  })
+  console.log("new product"+newProduct+"end");
+  const newUser = {
+    ...user.toObject(),
+    products:[...newProduct]
+  }
+
+  const updateUser = await Inventory.findOneAndUpdate({UserId :Email },{$set:{...newUser}},{ new: true });
+ // console.log(updateUser)
+  console.log(updateUser.products[0].product.stock)
+  res.end("done")
+})
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
