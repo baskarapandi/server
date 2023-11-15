@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
     UserId :String,
-    Sales:[Number]
+    products:[{productName:String,sales:[Number]}]
 });
 module.exports = mongoose.model("SalesReport",userSchema);

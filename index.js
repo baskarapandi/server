@@ -337,6 +337,46 @@ app.post("/api/getProduct", async (req, res,next) => {
     res.status(500).json({error:"internal error"})
   }
 })
+//get produst paggination
+app.post('/api/productsPaggination', async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  var decoded = jwt.decode(token,{complete: true});
+  const Email = decoded.payload;
+  const { page = 1, limit = 1 } = req.query; // Default to page 1 and 10 items per page
+  console.log("page and limit = "+page+" "+limit);
+  const skip = (page - 1) * limit;
+
+  const endIndex = page*limit;
+  console.log(skip);
+  console.log(endIndex);
+  const results={}
+  try {
+    const sellerData = await SellerData.findOne({ UserId: Email });
+    const totalProducts = sellerData.products.length;
+
+    const paginatedProducts = sellerData.products.slice(skip, endIndex);
+    console.log(paginatedProducts);
+    results.products=paginatedProducts;
+    results.total ={totalPage : ((totalProducts/limit) + ((totalProducts%limit)>0?1:0))}
+    if(endIndex<totalProducts){
+      results.next={
+        page:page+1,
+        limit:limit
+      }
+    }
+    if(skip>0){
+      results.prev={
+        page:page-1,
+        limit:limit
+      }
+    }
+    res.json(results);
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 //update the edited product
 app.post("/api/updateProduct", async (req, res,next) => {
   try{
@@ -426,7 +466,7 @@ app.post("/api/salesReport", async (req, res,next) => {
     console.log("email"+Email)
     const data =await salesReport.findOne({UserId:Email}).exec();
     //console.log(data.Sales)
-    res.json({sales:data.Sales});
+    res.json({sales:data.products});
   
   
 })
