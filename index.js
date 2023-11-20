@@ -1,4 +1,4 @@
-//const fileUploadApp = require('./fileUploadServer');
+
 const jwt = require('jsonwebtoken');
 const express = require('express');
 const multer = require('multer');
@@ -80,14 +80,11 @@ app.post('/api/user', async (req, res,next) => {
       res.status(401).json({error:response});
     }
     else{
-      User.create({Name : req.body.name,EmailId :req.body.email,Password :  req.body.password});
-      const response ="registered";
+      const user = User.create({Name : req.body.name,EmailId :req.body.email,Password :  req.body.password});
       console.log('registered');
-      const token = jwt.sign(req.body.email, secretKeyUser);
+      const token = jwt.sign(user._id.toString(), secretKeyUser);
       res.json({token});
     }
-    
-   
   } catch (error) {
     res.status(500).json({ error: 'An error occurred' });
   }
@@ -111,14 +108,17 @@ app.post('/api/seller', async (req, res,next) => {
       
     }
     else{
-      Seller.create({EmailId :req.body.email,Password :  req.body.password,Name : req.body.name});
+      const seller = await Seller.create({EmailId :req.body.email,Password :  req.body.password,Name : req.body.name});
+      const sellerId = seller._id.toString();
+      const sellerData = await SellerData.create({sellerId:sellerId,products:[]});
+      const inventory = await Inventory.create({sellerId:sellerId,products:[]});
+      const sales = await salesReport.create({sellerId:sellerId,products:[]});
+      console.log(sellerId);
       const response ="registered";
       console.log('registered');
-      const token = jwt.sign(req.body.email, secretKeySeller);
+      const token = jwt.sign(sellerId, secretKeySeller);
       res.json({token});
-    }
-    
-   
+    } 
   } catch (error) {
     res.status(500).json({ error: 'An error occurred' });
   }
@@ -139,7 +139,8 @@ app.post('/api/loginuser', async (req, res,next) => {
       console.log(" exist");
       res.end(response);
     */
-      const token = jwt.sign(email, secretKeyUser);
+      const id = exist._id.toString();
+      const token = jwt.sign(id, secretKeyUser);
       res.json({token});
     }
     else{
@@ -171,7 +172,9 @@ app.post('/api/loginseller', async (req, res,next) => {
       console.log(" exist");
       res.end(response);
     */
-      const token = jwt.sign(Email, secretKeySeller);
+      const id = exist._id.toString();
+      console.log(id);
+      const token = jwt.sign(id, secretKeySeller);
       res.json({token});
     }
     else{
@@ -234,27 +237,45 @@ app.post("/api/ProductDetails", async (req, res,next) => {
   console.log(Description);
   console.log("beforejwt")
   var decoded = jwt.decode(token,{complete: true});
-  const Email = decoded.payload;
-  console.log(Email);
-  const user = await SellerData.findOne({UserId:Email}).exec();
+  const Id = decoded.payload.toString();
+  console.log(Id);
+  const user = await SellerData.findOne({sellerId:Id}).exec();
   console.log("user"+user);
-  if(!user){
+  if(user==null){
     console.log("i am hera");
-    const newUser = await SellerData.create({UserId : Email ,products:{product:{name:Name,price:Price,url:Url,description:Description}}});
+    const newUser = await SellerData.create({sellerId : Id ,products:{product:{name:Name,price:Price,url:Url,description:Description}}});
+    const id= newUser.products[0].product._id;
+    const newInventory = await Inventory.create({sellerId : Id ,products:{sellerDataProductId:id,name:Name,product:{sales:0,stock:0}}});
     console.log(newUser);
     res.end("saved");
   }
   else{
     console.log("else")
+    const Inventorydata =  await Inventory.findOne({sellerId : Id}).exec();
     const products = user.products;
+    const inventoryProducts =Inventorydata.products;
+    
     const newUser={
       ...user.toObject(),
       products : [...products,{product:{name:Name,price:Price,url:Url,description:Description}}]
     }
     console.log(newUser);
     
-    const updateUser = await SellerData.findOneAndUpdate({UserId :Email },{$set:{...newUser}},{ new: true });
+    const updateUser = await SellerData.findOneAndUpdate({sellerId :Id},{$set:{...newUser}},{ new: true }).exec();
     console.log(updateUser)
+    const addedProduct = updateUser.products[updateUser.products.length - 1];
+
+console.log("Added product:", addedProduct);
+
+const sellerDataProductId = addedProduct ? addedProduct._id : null;
+
+console.log("SellerDataProductId:", sellerDataProductId);
+    const newInventory = {
+      ...Inventorydata.toObject(),
+      products:[...inventoryProducts,{sellerDataProductId:sellerDataProductId,name:Name,product:{sales:0,stock:0}}]
+    }
+    console.log("new Inventory ",newInventory)
+    const updateInventory = await Inventory.findOneAndUpdate({sellerId :Id},{$set:{...newInventory}},{ new: true }).exec();
     res.end("saved");
   }} catch (error) {
     res.status(500).json({ error: 'An error occurred' });
@@ -268,7 +289,7 @@ app.post("/api/SellersData", async (req, res,next) => {
     var decoded = jwt.decode(token,{complete: true});
     const Email = decoded.payload;
     const value = req.body.val;
-    const sellerData = await SellerData.findOne({UserId: Email}).exec();
+    const sellerData = await SellerData.findOne({sellerId: Email}).exec();
     const array = sellerData.products;
     res.json({array});
   }
@@ -284,13 +305,13 @@ app.post("/api/SellersDataUpdate", async (req, res,next) => {
     const Email = decoded.payload;
     const products = req.body.Products;
     console.log(products)
-    const sellerData = await SellerData.findOne({UserId: Email}).exec();
+    const sellerData = await SellerData.findOne({sellerId: Email}).exec();
     const newUser={
       ...sellerData.toObject(),
       products : products
     }
     console.log("newuser"+newUser)
-    const updatedUser = await SellerData.findOneAndUpdate({UserId :Email },{$set:{...newUser}},{ new: true });
+    const updatedUser = await SellerData.findOneAndUpdate({sellerId :Email },{$set:{...newUser}},{ new: true });
     console.log(updatedUser)
     if(updatedUser!=null){
       res.end("ok")
@@ -313,7 +334,7 @@ app.post("/api/getProduct", async (req, res,next) => {
     const Email = decoded.payload;
     console.log(Email)
      SellerData.findOne(
-      { UserId: Email, "products._id": id },
+      { sellerId: Email, "products._id": id },
       { "products.$": 1}
     ).then((sellerData) => {
       if (!sellerData) {
@@ -352,8 +373,9 @@ app.post('/api/productsPaggination', async (req, res) => {
   console.log(endIndex);
   const results={}
   try {
-    const sellerData = await SellerData.findOne({ UserId: Email });
-    const totalProducts = sellerData.products.length;
+    const sellerData = await SellerData.findOne({ sellerId: Email }).exec();
+    console.log(sellerData);
+    if(sellerData){const totalProducts = sellerData.products.length;
 
     const paginatedProducts = sellerData.products.slice(skip, endIndex);
     console.log(paginatedProducts);
@@ -370,6 +392,10 @@ app.post('/api/productsPaggination', async (req, res) => {
         page:page-1,
         limit:limit
       }
+    }}
+    else{
+      results.products=[];
+      results.totalPage=0;
     }
     res.json(results);
   } catch (error) {
@@ -388,7 +414,7 @@ app.post("/api/updateProduct", async (req, res,next) => {
     const Email = decoded.payload;
     const sellerData = await SellerData.updateOne(
       {
-        UserId: Email,
+        sellerId: Email,
         "products._id": updatedProduct._id
       },
       {
@@ -419,7 +445,7 @@ app.post("/api/deleteProduct", async (req, res,next) => {
     console.log("ProductId"+ProductId)
     const sellerData = await SellerData.updateOne(
       {
-        UserId: Email,
+        sellerId: Email,
       },
       {
         $pull: {
@@ -442,10 +468,10 @@ app.post("/api/InventoryData", async (req, res,next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     var decoded = jwt.decode(token,{complete: true});
-    const Email = decoded.payload;
-    console.log(Email);
+    const sellerId = decoded.payload;
+    console.log(sellerId);
     console.log("inventory token " + token);
-    const user =await Inventory.findOne({UserId:Email}).exec();
+    const user =await Inventory.findOne({sellerId:sellerId}).exec();
     console.log("user"+user);
     const product = user.products;
     console.log("product"+product)
@@ -457,17 +483,20 @@ app.post("/api/InventoryData", async (req, res,next) => {
 
 })
 app.post("/api/salesReport", async (req, res,next) => {
-  
+  try{
     console.log("api request");
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     var decoded = jwt.decode(token,{complete: true});
-    const Email = decoded.payload;
-    console.log("email"+Email)
-    const data =await salesReport.findOne({UserId:Email}).exec();
-    //console.log(data.Sales)
+    const sellerId = decoded.payload;
+    console.log("email"+sellerId)
+    const data =await salesReport.findOne({sellerId:sellerId}).exec();
+    console.log(data.products);
     res.json({sales:data.products});
-  
+  }
+  catch{
+    res.status(500).json({error:"internal error"});
+  }
   
 })
 
@@ -478,7 +507,7 @@ app.post("/api/Search", async (req, res,next) => {
   var decoded = jwt.decode(token,{complete: true});
   const Email = decoded.payload;
   const value = req.body.val;
-  const sellerData = await Inventory.findOne({UserId: Email}).exec();
+  const sellerData = await Inventory.findOne({sellerId: Email}).exec();
   const array = sellerData.products;
   console.log("products"+array)
   console.log(array);
@@ -509,7 +538,7 @@ app.post("/api/editStock", async (req, res,next) => {
   const Email = decoded.payload;
   console.log(Email);
   console.log("inventory token " + token);
-  const user =await Inventory.findOne({UserId:Email}).exec();
+  const user =await Inventory.findOne({sellerId:Email}).exec();
   //console.log("user"+user);
   const products = user.products;
   console.log("product    "+products)
@@ -532,7 +561,7 @@ app.post("/api/editStock", async (req, res,next) => {
     products:[...newProduct]
   }
 
-  const updateUser = await Inventory.findOneAndUpdate({UserId :Email },{$set:{...newUser}},{ new: true });
+  const updateUser = await Inventory.findOneAndUpdate({sellerId :Email },{$set:{...newUser}},{ new: true });
  // console.log(updateUser)
   console.log(updateUser.products[0].product.stock)
   res.end("done")
